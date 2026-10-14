@@ -1,0 +1,88 @@
+# running-loops-standalone 1.0.0: the loop's operating defaults. SKILL.md states each one as a rule.
+# Change them from run-log evidence, never per run.
+
+# The orchestrator. Writes the criteria and the briefs, judges, decides. Its effort is set at the
+# session start and changed only between passes (the cache survives on an API key or a subscription;
+# on Bedrock, Google Cloud, or a gateway a change clears it). Delegates never inherit it.
+[defaults.model]
+name = "fable"
+id = "claude-fable-5-1"
+effort = "high"
+effort_hard_loop = "xhigh"       # a choice for a hard loop
+
+# Retry once on the same rung with the weakness named, then promote one rung, every rung
+# in order. Brief check on the promoted rung before its retry. Caps per slice. These are
+# the skill's MUSTs; change them from run-log evidence, never per run.
+[defaults.promotion]
+retry_same_rung = 1
+retry_effort_step = 1            # the retry runs one effort step up: low > medium > high > xhigh
+retry_effort_ceiling = "xhigh"   # max stays out of delegated work
+promoted_rung_effort = "retry"   # a promoted rung starts at the retry's effort, never lower
+judge_error_reruns = 1           # a missing verdict is JUDGE_ERROR: re-run once, never a failed attempt
+max_promotions = 2
+brief_check = true
+max_brief_fixes = 1
+demote_after_clean_passes = 2
+demote_order = ["effort", "rung"]
+
+# The judge runs in a separate context one rung up or higher, or as a machine check.
+# The one exception is the top of the ladder: Fable 5.1 work is judged by a fresh
+# Fable 5.1 context. The self-score is withheld from the judge and never opens the gate.
+[defaults.judge]
+separate_context = true
+# The reference build is defined in SKILL.md, "Where the numbers come from".
+effort = "high"                  # set on the call; output was 15% of a Fable 5.1 verdict in the reference build
+rung = "cheapest the advisor rule allows"   # Haiku read work: machine check, else Sonnet; Sonnet: Opus; Opus: Fable
+brief = "criteria slice, the work in full, and only the references each criterion names"
+min_rung_relative_to_worker = 1
+top_of_ladder_exception = "fable judged by fresh fable context"
+self_score_withheld_from_judge = true
+machine_outranks_model = true
+
+# Starting rung and effort with no history, by what the slice does. A read slice finds, searches,
+# extracts into the return, or checks; a write slice puts words or code into the deliverable.
+# Design defaults: the reference build held its workers at inherited xhigh, so these are unmeasured.
+[defaults.start]
+read = { rung = "haiku", effort = "none", budget_tokens = 40000 }
+read_over_200k = { rung = "sonnet", effort = "low", budget_tokens = 40000 }
+mechanical_write = { rung = "sonnet", effort = "low", budget_tokens = 40000 }
+judgment_write = { rung = "sonnet", effort = "medium", budget_tokens = 90000 }
+hard_reasoning = { rung = "opus", effort = "high", budget_tokens = 150000 }
+
+# The ladder, cheapest rung first. Prices are first-party API, per million tokens
+# in / out, from the claude-api skill's model table (cached 2026-06-24).
+[ladder]
+order = ["haiku", "sonnet", "opus", "fable"]
+
+[ladder.haiku]
+name = "Haiku 4.5"
+id = "claude-haiku-4-5"
+context = "200K"
+price_in = "$1"
+price_out = "$5"
+default_for = ["read"]
+effort = "none"   # takes a thinking budget, not an effort setting (claude-api thinking and effort table)
+
+[ladder.sonnet]
+name = "Sonnet 5"
+id = "claude-sonnet-5"
+context = "1M"
+price_in = "$2"
+price_out = "$10"
+default_for = ["mechanical-write", "judgment-write", "read-over-200k"]
+
+[ladder.opus]
+name = "Opus 5.5"
+id = "claude-opus-5-5"
+context = "1M"
+price_in = "$4"
+price_out = "$20"
+default_for = ["hard-reasoning"]
+
+[ladder.fable]
+name = "Fable 5.1"
+id = "claude-fable-5-1"
+context = "1M"
+price_in = "$10"
+price_out = "$50"
+default_for = ["orchestrator", "final-judge"]

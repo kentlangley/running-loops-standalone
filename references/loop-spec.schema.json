@@ -1,0 +1,649 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "running-loops-standalone loop spec",
+  "$comment": "running-loops-standalone 1.0.0",
+  "input": {
+    "type": "object",
+    "required": [
+      "task",
+      "success_criteria"
+    ],
+    "properties": {
+      "task": {
+        "type": "string",
+        "description": "The single thing you want the loop to carry to done."
+      },
+      "success_criteria": {
+        "type": "array",
+        "description": "The bar for done, written strict with no soft passes. Each criterion is scored 1-10 every VERIFY. Prefer incorruptible judges (a test, a compile, a scorecard, a named skill).",
+        "minItems": 1,
+        "items": {
+          "type": "object",
+          "required": [
+            "id",
+            "criterion"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "Short id the delegation criteria_slice refers to, e.g. C1."
+            },
+            "criterion": {
+              "type": "string",
+              "description": "What done looks like, stated in scorable terms."
+            },
+            "judge": {
+              "type": "string",
+              "description": "How this criterion is scored: a named skill (e.g. your style-guide skill, a claims check), a test/compile, a scorecard, or a human bar."
+            },
+            "judge_rung": {
+              "type": "string",
+              "enum": [
+                "machine",
+                "sonnet",
+                "opus",
+                "fable",
+                "human"
+              ],
+              "description": "Where the judge runs. A separate context from the worker, one rung up or higher (Fable 5.1 work is judged by a fresh Fable 5.1 context), or a machine check, or a human. Haiku is never a judge rung because no worker sits below it."
+            },
+            "threshold": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10,
+              "default": 8,
+              "description": "Score at or above which this criterion is considered met. The loop exits only when the FLOOR across all criteria clears its threshold on the independent judge."
+            }
+          }
+        }
+      },
+      "run_method": {
+        "type": "string",
+        "enum": [
+          "prompt",
+          "loop",
+          "schedule"
+        ],
+        "description": "How the loop runs: prompt (protocol in one prompt, model self-loops), loop (/loop reruns until the bar clears), schedule (/schedule runs unattended on a cadence)."
+      },
+      "amplifiers": {
+        "type": "array",
+        "description": "Optional force multipliers layered on the loop, distinct from the run method. 'model-choice' is accepted as an alias of 'ladder'.",
+        "items": {
+          "type": "string",
+          "enum": [
+            "workflow",
+            "multi-agent-fanout",
+            "ultrathink",
+            "effort",
+            "ladder",
+            "model-choice"
+          ]
+        }
+      },
+      "orchestrator": {
+        "type": "object",
+        "description": "The model that holds the loop: writes criteria and briefs, judges, decides.",
+        "properties": {
+          "rung": {
+            "type": "string",
+            "enum": [
+              "opus",
+              "fable"
+            ],
+            "default": "fable"
+          },
+          "effort": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default": "high"
+          }
+        }
+      },
+      "delegation": {
+        "type": "array",
+        "description": "Slices of DO handed to a rung. Each slice carries the six-field brief, with slice_kind (read or write) riding beside the rung and effort field. The orchestrator keeps the loop.",
+        "items": {
+          "type": "object",
+          "required": [
+            "slice",
+            "criteria_slice",
+            "rung",
+            "effort",
+            "slice_kind",
+            "budget",
+            "inputs",
+            "return_shape"
+          ],
+          "properties": {
+            "slice": {
+              "type": "string",
+              "description": "The task slice: one thing."
+            },
+            "criteria_slice": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Which criteria this slice is scored on, by success_criteria id, thresholds inherited. Each item is a criterion id, followed for a machine-judged criterion by the command that checks it (for example \"C8: python3 check_slice.py <scratch copy>\"); the delegate runs that command on its own scratch copy before returning."
+            },
+            "rung": {
+              "type": "string",
+              "enum": [
+                "haiku",
+                "sonnet",
+                "opus",
+                "fable"
+              ],
+              "description": "Starting rung. Defaults with no history: read slices haiku (sonnet at low above 200K of input); mechanical writes sonnet at low; judgment writes sonnet at medium; hard reasoning opus at high; or the cheapest rung and lowest effort that cleared this slice type before per the run logs."
+            },
+            "effort": {
+              "type": "string",
+              "enum": [
+                "none",
+                "low",
+                "medium",
+                "high",
+                "xhigh"
+              ],
+              "description": "Set on the call and never inherited from the orchestrator's session. 'none' for Haiku 4.5, which takes a thinking budget. Max stays out of delegated work; xhigh is the retry ceiling."
+            },
+            "budget": {
+              "type": "string",
+              "description": "Tokens, dollars, or turns for this slice."
+            },
+            "inputs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Exact paths or content, digested to fit the rung's context (Haiku 4.5 is 200K). The loop's history stays with the orchestrator."
+            },
+            "return_shape": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [
+                "work",
+                "self_scores",
+                "weakest",
+                "assumptions",
+                "log_lines"
+              ],
+              "description": "What the delegate returns. The delegate is fenced: it returns and does not write. The orchestrator writes the log lines and the winning work."
+            },
+            "probe": {
+              "type": "boolean",
+              "default": false,
+              "description": "True for a calibration probe: the slice starts one step below its default (effort first, then the rung) and is logged as a probe."
+            },
+            "slice_kind": {
+              "type": "string",
+              "enum": [
+                "read",
+                "write"
+              ],
+              "description": "A read slice finds, searches, extracts into the return, or checks, and starts on Haiku 4.5. A write slice puts words or code into the deliverable and starts on Sonnet 5 or above. A slice that does both is a write slice when its output lands in the deliverable."
+            }
+          }
+        }
+      },
+      "promotion": {
+        "type": "object",
+        "description": "What happens when a delegated slice fails its independent judge. The counts are the skill's MUSTs; they change from run-log evidence, never per run.",
+        "properties": {
+          "retry_same_rung": {
+            "type": "integer",
+            "const": 1,
+            "description": "One retry on the same rung with the named weakness pasted into the brief, before promoting."
+          },
+          "skip_rungs": {
+            "type": "boolean",
+            "const": false,
+            "description": "Never. One rung at a time."
+          },
+          "brief_check": {
+            "type": "boolean",
+            "const": true,
+            "description": "On the promoted rung, after its first failed attempt and before any retry: if its weakest criterion id matches the weakest id of the attempt that triggered the promotion, rewrite the brief and restart on the slice's original starting rung and effort. Resets the counters; the earlier promotion stays logged, tagged superseded."
+          },
+          "max_brief_fixes": {
+            "type": "integer",
+            "const": 1,
+            "description": "Cap per slice. A second brief-fix condition hands the slice to the orchestrator."
+          },
+          "max_promotions": {
+            "type": "integer",
+            "const": 2,
+            "description": "Cap per slice. After this, or at the top of the ladder, the orchestrator takes the slice (judged by a fresh Fable 5.1 context) if a pass and budget remain, else the loop exits STOPPED_AT_LIMIT."
+          },
+          "demote_after_clean_passes": {
+            "type": "integer",
+            "const": 2,
+            "description": "A slice type that clears first-attempt on a rung this many times in a row starts one step lower next time: effort first, then the rung."
+          },
+          "retry_effort_step": {
+            "type": "integer",
+            "default": 1,
+            "description": "The retry on the same rung runs this many effort steps up."
+          },
+          "retry_effort_ceiling": {
+            "type": "string",
+            "enum": [
+              "high",
+              "xhigh"
+            ],
+            "default": "xhigh"
+          },
+          "judge_error_reruns": {
+            "type": "integer",
+            "default": 1,
+            "description": "A missing or malformed verdict is JUDGE_ERROR: re-run the verdict this many times; it never counts as a failed attempt."
+          }
+        }
+      },
+      "limit": {
+        "type": "object",
+        "description": "The guard so a loop cannot run forever. At least one of these should be set.",
+        "properties": {
+          "max_passes": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Hard cap on iterations."
+          },
+          "budget": {
+            "type": "number",
+            "description": "Token or dollar budget ceiling."
+          },
+          "wall_clock": {
+            "type": "string",
+            "description": "Time limit (e.g. 30m, 2h)."
+          }
+        }
+      },
+      "attended": {
+        "type": "boolean",
+        "default": true,
+        "description": "Whether a human watches the run. Irreversible or outward-facing steps require a human on the exit."
+      },
+      "co_fire_style_skill": {
+        "type": "boolean",
+        "default": true,
+        "description": "Co-fire your style-guide skill on any prose the loop produces. Default true."
+      }
+    }
+  },
+  "output": {
+    "type": "object",
+    "required": [
+      "exit_state",
+      "final_scores",
+      "passes",
+      "validation_status"
+    ],
+    "properties": {
+      "exit_state": {
+        "type": "string",
+        "enum": [
+          "FINAL",
+          "STOPPED_AT_LIMIT"
+        ],
+        "description": "FINAL means every criterion cleared its threshold on the independent judge. STOPPED_AT_LIMIT means a limit was hit before the bar."
+      },
+      "final_scores": {
+        "type": "array",
+        "description": "The last VERIFY: each criterion with its final independent score.",
+        "items": {
+          "type": "object",
+          "required": [
+            "criterion",
+            "score"
+          ],
+          "properties": {
+            "criterion": {
+              "type": "string"
+            },
+            "score": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10
+            },
+            "met": {
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "independent_scores": {
+        "type": "array",
+        "description": "Per delegated pass: the independent judge's floor beside the worker's self-score floor, compared by the orchestrator after the verdict. The gap is the calibration signal.",
+        "items": {
+          "type": "object",
+          "required": [
+            "slice",
+            "rung",
+            "attempt",
+            "self_floor",
+            "independent_floor",
+            "judge_rung",
+            "outcome"
+          ],
+          "properties": {
+            "slice": {
+              "type": "string"
+            },
+            "rung": {
+              "type": "string"
+            },
+            "attempt": {
+              "type": "integer"
+            },
+            "self_floor": {
+              "type": "number"
+            },
+            "independent_floor": {
+              "type": "number"
+            },
+            "gap": {
+              "type": "number"
+            },
+            "judge_rung": {
+              "type": "string",
+              "enum": [
+                "machine",
+                "sonnet",
+                "opus",
+                "fable",
+                "human"
+              ]
+            },
+            "outcome": {
+              "type": "string",
+              "enum": [
+                "PASS",
+                "RETRY",
+                "PROMOTE",
+                "BRIEF_FIX",
+                "ORCHESTRATOR_TOOK_IT",
+                "JUDGE_ERROR"
+              ]
+            },
+            "effort_requested": {
+              "type": "string",
+              "description": "The effort the brief set on the call."
+            },
+            "effort_observed": {
+              "type": "string",
+              "description": "The effort the transcript recorded (scripts/cost_by_class.py). A mismatch is the inherited-effort failure mode."
+            },
+            "judge_effort": {
+              "type": "string",
+              "default": "high"
+            }
+          }
+        }
+      },
+      "promotions": {
+        "type": "array",
+        "description": "Every promotion the run made, including any later superseded by a brief fix.",
+        "items": {
+          "type": "object",
+          "required": [
+            "slice",
+            "from_rung",
+            "to_rung",
+            "weakest",
+            "self_score",
+            "independent_score"
+          ],
+          "properties": {
+            "slice": {
+              "type": "string"
+            },
+            "from_rung": {
+              "type": "string"
+            },
+            "to_rung": {
+              "type": "string"
+            },
+            "weakest": {
+              "type": "string",
+              "description": "A success_criteria id, e.g. C5. The brief check compares this field across rungs."
+            },
+            "detail": {
+              "type": "string",
+              "description": "The judge's named weakness, in prose."
+            },
+            "self_score": {
+              "type": "number"
+            },
+            "independent_score": {
+              "type": "number"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "superseded_by_brief_fix": {
+              "type": "boolean",
+              "default": false,
+              "description": "True when a later brief check found the brief at fault. The cost still counts; the cap does not."
+            }
+          }
+        }
+      },
+      "brief_fixes": {
+        "type": "array",
+        "description": "Every brief fix: the slice, the weakness two rungs shared, and the rung it restarted on.",
+        "items": {
+          "type": "object",
+          "required": [
+            "slice",
+            "weakest",
+            "restarted_on"
+          ],
+          "properties": {
+            "slice": {
+              "type": "string"
+            },
+            "weakest": {
+              "type": "string",
+              "description": "The success_criteria id two rungs failed on."
+            },
+            "detail": {
+              "type": "string",
+              "description": "What the brief got wrong and how it was rewritten."
+            },
+            "rungs_that_failed": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "restarted_on": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "probes_and_demotions": {
+        "type": "array",
+        "description": "Calibration probes run and demotions applied, so the ladder's learning is visible.",
+        "items": {
+          "type": "object",
+          "required": [
+            "slice_type",
+            "kind",
+            "rung"
+          ],
+          "properties": {
+            "slice_type": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "probe",
+                "demotion"
+              ]
+            },
+            "rung": {
+              "type": "string"
+            },
+            "result": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "rungs_used": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Every rung that did work or judged in this run."
+      },
+      "cost_per_slice": {
+        "type": "array",
+        "description": "Cost per completed slice including retries, promotions, and judge calls, with contexts opened and cost by token class (scripts/cost_by_class.py). This number decides the starting rung and effort next time.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "slice": {
+              "type": "string"
+            },
+            "final_rung": {
+              "type": "string"
+            },
+            "attempts": {
+              "type": "integer"
+            },
+            "cost": {
+              "type": "string"
+            },
+            "final_effort": {
+              "type": "string"
+            },
+            "contexts_opened": {
+              "type": "integer",
+              "description": "Every attempt and every verdict opens a fresh context that pays to write its opening prompt to the cache."
+            },
+            "cost_by_class": {
+              "type": "object",
+              "description": "Dollars by token class, each message counted once.",
+              "properties": {
+                "fresh": {
+                  "type": "number"
+                },
+                "cache_write": {
+                  "type": "number"
+                },
+                "cache_read": {
+                  "type": "number"
+                },
+                "output": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      },
+      "weakest_remaining": {
+        "type": "string",
+        "description": "For STOPPED_AT_LIMIT, the lowest-scoring criterion still short of its threshold. Empty for FINAL."
+      },
+      "passes": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "How many PLAN/DO/VERIFY/DECIDE passes ran."
+      },
+      "skills_used": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Skills routed into the loop's passes, including any used as judges and any applied by delegates."
+      },
+      "assumptions": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Sensible assumptions the loop made instead of stopping to ask, per the rules. Includes assumptions returned by delegates."
+      },
+      "validation_status": {
+        "type": "object",
+        "description": "Checkpoint completion status.",
+        "properties": {
+          "criteria_written_first": {
+            "type": "boolean"
+          },
+          "incorruptible_judge_present": {
+            "type": "boolean"
+          },
+          "four_moves_run": {
+            "type": "boolean"
+          },
+          "hard_gate_on_floor": {
+            "type": "boolean"
+          },
+          "limit_set": {
+            "type": "boolean"
+          },
+          "run_method_matches_trust": {
+            "type": "boolean"
+          },
+          "irreversible_steps_gated": {
+            "type": "boolean"
+          },
+          "done_tied_to_skills": {
+            "type": "boolean"
+          },
+          "delegation_briefs_complete": {
+            "type": "boolean"
+          },
+          "judge_separated": {
+            "type": "boolean"
+          },
+          "delegates_fenced": {
+            "type": "boolean"
+          },
+          "promotions_logged": {
+            "type": "boolean"
+          },
+          "style_skill_co_fired": {
+            "type": "boolean"
+          },
+          "delegate_log_lines_written": {
+            "type": "boolean"
+          },
+          "run_log_kept": {
+            "type": "boolean"
+          }
+        }
+      },
+      "orchestrator_session": {
+        "type": "object",
+        "description": "The orchestrator's own session, priced from its transcript.",
+        "properties": {
+          "effort_observed": {
+            "type": "string"
+          },
+          "cost": {
+            "type": "number"
+          },
+          "output_share": {
+            "type": "number"
+          }
+        }
+      }
+    }
+  }
+}
